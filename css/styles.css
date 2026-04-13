@@ -13,6 +13,14 @@ html, body {
   color: #fff;
 }
 
+/* ── MindAR container ─────────────────────────── */
+#ar-container {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+}
+
 /* ── Full-screen overlay screens ──────────────── */
 .overlay {
   position: fixed; inset: 0;

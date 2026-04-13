@@ -55,7 +55,7 @@ export async function initARScene(objectConfig, callbacks = {}) {
 
   // 2. Initialise MindARThree ──────────────────────────────────────────────────
   mindarThree = new MindARThree({
-    container:      document.body,
+    container:      document.getElementById('ar-container'),
     imageTargetSrc: mindUrl,
     maxTrack:       1,
     uiLoading:      'no',
