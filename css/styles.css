@@ -13,25 +13,6 @@ html, body {
   color: #fff;
 }
 
-/* ── Camera feed ─────────────────────────────── */
-#camera-feed {
-  position: fixed; inset: 0;
-  width: 100%; height: 100%;
-  object-fit: cover;
-  z-index: 1;
-  /* Mirror for front camera feel (optional — remove if rear camera is preferred) */
-  /* transform: scaleX(-1); */
-}
-
-/* ── Three.js canvas ──────────────────────────── */
-#ar-canvas {
-  position: fixed; inset: 0;
-  width: 100%; height: 100%;
-  z-index: 2;
-  pointer-events: auto;   /* enabled — scene.js handles drag */
-  touch-action: none;     /* prevent scroll/zoom interference */
-}
-
 /* ── Full-screen overlay screens ──────────────── */
 .overlay {
   position: fixed; inset: 0;
@@ -82,6 +63,8 @@ html, body {
   font-size: 0.95rem;
 }
 
+.card p strong { color: rgba(255, 255, 255, 0.9); }
+
 /* ── Primary button ───────────────────────────── */
 .btn {
   display: inline-block;
@@ -114,13 +97,92 @@ html, body {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── Compile progress bar ─────────────────────── */
+.progress-wrap {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 1.25rem;
+}
+
+.progress-wrap.hidden { display: none; }
+
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #ff4d6d, #ff0040);
+  border-radius: 2px;
+  transition: width 0.15s ease;
+}
+
+/* ── Scanning overlay ─────────────────────────── */
+#scan-overlay {
+  position: fixed; inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+#scan-overlay.hidden { display: none; }
+
+/* Viewfinder frame */
+.scan-frame {
+  position: relative;
+  width: min(72vw, 72vh);
+  height: min(72vw, 72vh);
+}
+
+/* Corner brackets */
+.corner {
+  position: absolute;
+  width: 28px; height: 28px;
+  border-color: rgba(255, 255, 255, 0.85);
+  border-style: solid;
+}
+
+.corner.tl { top: 0;    left: 0;  border-width: 3px 0 0 3px; border-radius: 4px 0 0 0; }
+.corner.tr { top: 0;    right: 0; border-width: 3px 3px 0 0; border-radius: 0 4px 0 0; }
+.corner.bl { bottom: 0; left: 0;  border-width: 0 0 3px 3px; border-radius: 0 0 0 4px; }
+.corner.br { bottom: 0; right: 0; border-width: 0 3px 3px 0; border-radius: 0 0 4px 0; }
+
+/* Animated scan line */
+.scan-line {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255, 60, 80, 0.9), transparent);
+  top: 0;
+  animation: scanMove 2.2s ease-in-out infinite;
+}
+
+@keyframes scanMove {
+  0%   { top: 4%; opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { top: 96%; opacity: 0; }
+}
+
+/* Label below the frame */
+.scan-label {
+  margin-top: 1.5rem;
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+}
+
 /* ── Drag hint ────────────────────────────────── */
 .hint {
   position: fixed;
   bottom: 2.5rem;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 5;
+  z-index: 6;
   background: rgba(0, 0, 0, 0.55);
   color: rgba(255, 255, 255, 0.8);
   font-size: 0.8rem;

@@ -1,46 +1,67 @@
 /**
  * main.js — entry point
- * Reads ?object= from the URL, orchestrates permission flow, then hands off
- * to camera.js and scene.js.
+ *
+ * Orchestrates the permission flow, shows compile-progress feedback,
+ * then hands off to scene.js (MindAR image tracking).
  */
-import { initCamera }  from './camera.js';
-import { initScene, startAnimation } from './scene.js';
+import { initARScene }    from './scene.js';
 import { getObjectConfig } from './objects/registry.js';
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
-const $permission = document.getElementById('permission-screen');
-const $loading    = document.getElementById('loading-screen');
-const $error      = document.getElementById('error-screen');
-const $errorMsg   = document.getElementById('error-msg');
-const $hint       = document.getElementById('ui-hint');
+const $permission  = document.getElementById('permission-screen');
+const $loading     = document.getElementById('loading-screen');
+const $loadingMsg  = document.getElementById('loading-msg');
+const $compileWrap = document.getElementById('compile-progress');
+const $compileBar  = document.getElementById('compile-bar');
+const $error       = document.getElementById('error-screen');
+const $errorMsg    = document.getElementById('error-msg');
+const $scanOverlay = document.getElementById('scan-overlay');
+const $hint        = document.getElementById('ui-hint');
 
-// ── Which object to show (from QR code URL param) ─────────────────────────────
-const params     = new URLSearchParams(window.location.search);
-const objectKey  = params.get('object') || 'heart';
+// ── Which AR object to show (from QR code URL param) ─────────────────────────
+const params    = new URLSearchParams(window.location.search);
+const objectKey = params.get('object') || 'heart';
 
 // ── Start flow ────────────────────────────────────────────────────────────────
 async function startAR() {
   show($loading);
+  $loadingMsg.textContent = 'Preparing AR\u2026';
 
   try {
-    // 1. Camera
-    const video = document.getElementById('camera-feed');
-    await initCamera(video);
-
-    // 2. Resolve 3D object
     const config = getObjectConfig(objectKey);
     if (!config) throw new Error(`Unknown AR object: "${objectKey}"`);
 
-    // 3. Build Three.js scene
-    const canvas = document.getElementById('ar-canvas');
-    initScene(canvas, config);
+    await initARScene(config, {
 
-    // 4. Begin pop-up animation
-    hide($loading);
-    startAnimation();
+      // Called during in-browser target compilation (0 → 1)
+      onCompileProgress(p) {
+        $loadingMsg.textContent = 'Compiling target\u2026';
+        show($compileWrap);
+        $compileBar.style.width = `${Math.round(p * 100)}%`;
+        if (p >= 1) {
+          hide($compileWrap);
+          $loadingMsg.textContent = 'Starting camera\u2026';
+        }
+      },
 
-    // Show drag hint after animation settles
-    setTimeout(() => $hint.classList.remove('hidden'), 1800);
+      // Called once the MindAR camera is live and tracking has started
+      onReady() {
+        hide($loading);
+        show($scanOverlay);
+      },
+
+      // Marker detected — hide scanning overlay, show drag hint after pop lands
+      onTargetFound() {
+        hide($scanOverlay);
+        setTimeout(() => show($hint), 1800);
+      },
+
+      // Marker lost — re-show scanning overlay and hide drag hint
+      onTargetLost() {
+        show($scanOverlay);
+        hide($hint);
+      },
+    });
 
   } catch (err) {
     hide($loading);

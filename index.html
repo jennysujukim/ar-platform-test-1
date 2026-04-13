@@ -10,18 +10,14 @@
 </head>
 <body>
 
-  <!-- Live camera feed rendered behind the canvas -->
-  <video id="camera-feed" autoplay playsinline muted></video>
-
-  <!-- Three.js AR overlay -->
-  <canvas id="ar-canvas"></canvas>
+  <!-- MindAR injects its own video + canvas into <body> at runtime -->
 
   <!-- ── Screens ── -->
   <div id="permission-screen" class="overlay">
     <div class="card">
       <div class="card-icon">&#10084;</div>
-      <h1>AR Experience</h1>
-      <p>Point your camera anywhere and watch a 3D object appear in your world.</p>
+      <h1>AR Heart</h1>
+      <p>Point your camera at the <strong>heart marker</strong> image and watch a 3D heart burst into your world.</p>
       <button id="start-btn" class="btn">Enable Camera</button>
     </div>
   </div>
@@ -29,7 +25,10 @@
   <div id="loading-screen" class="overlay hidden">
     <div class="card">
       <div class="spinner"></div>
-      <p>Starting AR&hellip;</p>
+      <p id="loading-msg">Starting AR&hellip;</p>
+      <div id="compile-progress" class="progress-wrap hidden">
+        <div id="compile-bar" class="progress-bar"></div>
+      </div>
     </div>
   </div>
 
@@ -42,12 +41,32 @@
     </div>
   </div>
 
-  <!-- Drag hint shown after object appears -->
+  <!-- Scanning overlay — shown while waiting for marker to be detected -->
+  <div id="scan-overlay" class="hidden">
+    <div class="scan-frame">
+      <span class="corner tl"></span>
+      <span class="corner tr"></span>
+      <span class="corner bl"></span>
+      <span class="corner br"></span>
+      <div class="scan-line"></div>
+    </div>
+    <p class="scan-label">Scan the heart marker</p>
+  </div>
+
+  <!-- Drag hint shown after heart appears -->
   <div id="ui-hint" class="hint hidden">Drag to rotate</div>
 
   <script type="importmap">
-    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+        "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js",
+        "mindar-image": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image.prod.js"
+      }
+    }
   </script>
+
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

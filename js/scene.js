@@ -1,134 +1,246 @@
 /**
- * scene.js — Three.js AR scene
+ * scene.js — MindAR image-tracking AR scene
  *
- * Layout:
- *   • Transparent renderer sits over the live camera video
- *   • Object starts tiny + far away → springs to full size (pop from back to front)
- *   • After landing: gentle float + slow auto-rotate
- *   • Pointer drag (mouse or touch) rotates the object; momentum carries on release
+ * Flow:
+ *   1. Load heart-marker.png and compile it to a .mind target (in-browser).
+ *      Compiled bytes are cached in localStorage so subsequent visits are instant.
+ *   2. Initialise MindARThree — it manages the camera feed, renderer, scene and camera.
+ *   3. Attach the 3D heart to an anchor that is pinned to the detected marker.
+ *   4. On target-found: run the pop-up entrance animation, then idle float.
+ *   5. On target-lost: hide the heart until the marker is found again.
+ *   6. Pointer drag rotates the heart while it is visible.
  */
 import * as THREE from 'three';
+import { MindARThree } from 'mindar-image-three';
+import { Compiler } from 'mindar-image';
 
-// ── Module-level state ────────────────────────────────────────────────────────
-let renderer, scene, camera, mesh;
-let rafId       = null;
-let startTime   = null;
+// ── Constants ─────────────────────────────────────────────────────────────────
+const TARGET_SRC  = 'assets/targets/heart-marker.png';
+const CACHE_KEY   = 'ar-heart-mind-v1';
+const BASE_SCALE  = 0.12;   // heart size relative to the marker (≈ 2.2 * 0.12 = 0.26 units wide)
+const POP_DUR     = 1.4;    // seconds for the entrance pop animation
+
+// ── Module state ──────────────────────────────────────────────────────────────
+let mindarThree = null;
+let heartMesh   = null;
+
+// animation
+let animActive  = false;
 let animDone    = false;
+let animStart   = null;   // timestamp (ms) when current entrance started
 
-// Interaction
-let isDragging      = false;
+// pointer drag
+let isDragging = false;
 let prevX = 0, prevY = 0;
 let velX  = 0, velY  = 0;
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-const POP_DURATION = 1.4;   // seconds for the pop-up animation
-const POP_START_Z  = -12;   // Z world-space start (far back)
-const POP_END_Z    =  0;    // Z world-space end   (front / centre)
-
 // ── Public API ────────────────────────────────────────────────────────────────
-export function initScene(canvas, objectConfig) {
-  // Renderer — transparent so the camera video shows through
-  renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setClearColor(0x000000, 0);     // fully transparent
 
-  // Scene
-  scene = new THREE.Scene();
+/**
+ * initARScene
+ *   Compiles the target image, boots MindAR, wires up events and the render loop.
+ *
+ * @param {Object} objectConfig  - registry entry; must have a `.create()` method
+ * @param {Object} callbacks
+ *   .onCompileProgress(0–1)  — called during in-browser compilation
+ *   .onReady()               — called once MindAR camera feed is live
+ *   .onTargetFound()         — called when the marker enters the camera view
+ *   .onTargetLost()          — called when the marker leaves the camera view
+ */
+export async function initARScene(objectConfig, callbacks = {}) {
+  const { onCompileProgress, onReady, onTargetFound, onTargetLost } = callbacks;
 
-  // Perspective camera — positioned along +Z looking toward origin
-  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-  camera.position.set(0, 0, 5);
+  // 1. Compile heart-marker.png → blob URL pointing to a .mind file ───────────
+  const mindUrl = await compileTarget(TARGET_SRC, onCompileProgress);
 
-  // ── Lighting ────────────────────────────────────────────────────────────────
-  // Soft ambient base
+  // 2. Initialise MindARThree ──────────────────────────────────────────────────
+  mindarThree = new MindARThree({
+    container:      document.body,
+    imageTargetSrc: mindUrl,
+    maxTrack:       1,
+    uiLoading:      'no',
+    uiScanning:     'no',
+    uiError:        'no',
+  });
+
+  const { renderer, scene, camera } = mindarThree;
+
+  // 3. Lighting (mirrors the original scene.js) ────────────────────────────────
   scene.add(new THREE.AmbientLight(0xffffff, 0.55));
 
-  // Key light — warm, from upper-right
   const key = new THREE.DirectionalLight(0xfff0f0, 1.6);
   key.position.set(4, 8, 6);
   scene.add(key);
 
-  // Fill light — cool pink, from left
   const fill = new THREE.DirectionalLight(0xff88aa, 0.7);
   fill.position.set(-5, 2, 4);
   scene.add(fill);
 
-  // Rim / back light — adds depth
   const rim = new THREE.DirectionalLight(0xffffff, 0.35);
   rim.position.set(0, -6, -6);
   scene.add(rim);
 
-  // ── 3D Object ───────────────────────────────────────────────────────────────
-  mesh = objectConfig.create();
-  mesh.scale.set(0.001, 0.001, 0.001);   // start invisible
-  mesh.position.z = POP_START_Z;
-  scene.add(mesh);
+  // 4. 3D heart mesh ────────────────────────────────────────────────────────────
+  heartMesh = objectConfig.create();
+  heartMesh.visible = false;
+  heartMesh.scale.setScalar(0.001);
 
-  // ── Interaction ─────────────────────────────────────────────────────────────
-  setupPointerInteraction(canvas);
+  // 5. Anchor the heart to image-target #0 ─────────────────────────────────────
+  const anchor = mindarThree.addAnchor(0);
+  anchor.group.add(heartMesh);
+  // Lift slightly above the flat marker surface so it "pops out"
+  heartMesh.position.set(0, 0, 0.05);
 
-  // ── Resize ──────────────────────────────────────────────────────────────────
-  window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+  // 6. Target found / lost callbacks ───────────────────────────────────────────
+  anchor.onTargetFound = () => {
+    heartMesh.visible = true;
+    heartMesh.scale.setScalar(0.001);
+    heartMesh.rotation.set(0, Math.PI, 0);
+    animActive = true;
+    animDone   = false;
+    animStart  = null;
+    onTargetFound?.();
+  };
+
+  anchor.onTargetLost = () => {
+    heartMesh.visible = false;
+    animActive = false;
+    animDone   = false;
+    onTargetLost?.();
+  };
+
+  // 7. Pointer drag interaction ─────────────────────────────────────────────────
+  const canvas = renderer.domElement;
+  canvas.style.touchAction = 'none';
+
+  canvas.addEventListener('pointerdown', e => {
+    if (!animDone || !heartMesh.visible) return;
+    isDragging = true;
+    prevX = e.clientX; prevY = e.clientY;
+    velX = velY = 0;
+    canvas.setPointerCapture(e.pointerId);
+  });
+
+  canvas.addEventListener('pointermove', e => {
+    if (!isDragging) return;
+    const dx = e.clientX - prevX;
+    const dy = e.clientY - prevY;
+    const s  = 0.012;
+    heartMesh.rotation.y += dx * s;
+    heartMesh.rotation.x += dy * s;
+    heartMesh.rotation.x = Math.max(-0.6, Math.min(0.6, heartMesh.rotation.x));
+    velY = dx * s;
+    velX = dy * s;
+    prevX = e.clientX; prevY = e.clientY;
+  });
+
+  const endDrag = () => { isDragging = false; };
+  canvas.addEventListener('pointerup',     endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+
+  // 8. Animation loop ───────────────────────────────────────────────────────────
+  renderer.setAnimationLoop(ts => {
+    if (animActive && heartMesh.visible) {
+      if (animStart === null) animStart = ts;
+      const elapsed = (ts - animStart) / 1000;
+
+      if (!animDone) {
+        if (elapsed < POP_DUR) {
+          // Entrance: elastic pop + spin
+          const t = elapsed / POP_DUR;
+          const s = easeOutElastic(t) * BASE_SCALE;
+          heartMesh.scale.setScalar(s);
+          heartMesh.rotation.y = Math.PI + (1 - easeOutCubic(t)) * Math.PI * 1.5;
+        } else {
+          heartMesh.scale.setScalar(BASE_SCALE);
+          animDone = true;
+        }
+      } else {
+        // Idle: gentle float + slow auto-rotate
+        const idleT = elapsed - POP_DUR;
+        heartMesh.position.set(0, Math.sin(idleT * 1.1) * 0.015, 0.05);
+
+        if (!isDragging) {
+          velY *= 0.92;
+          velX *= 0.92;
+          heartMesh.rotation.y += velY + 0.004;
+          heartMesh.rotation.x += velX;
+          heartMesh.rotation.x = Math.max(-0.6, Math.min(0.6, heartMesh.rotation.x));
+        }
+      }
+    }
+
+    renderer.render(scene, camera);
+  });
+
+  // 9. Start tracking (requests camera permission internally) ──────────────────
+  await mindarThree.start();
+  onReady?.();
+}
+
+// ── In-browser .mind compilation ──────────────────────────────────────────────
+
+async function compileTarget(imagePath, onProgress) {
+  // Return cached compiled data from localStorage (skip slow recompilation)
+  const cached = loadFromCache();
+  if (cached) return cached;
+
+  // Load the target image
+  const image = await loadImage(imagePath);
+
+  // Compile via MindAR's built-in Compiler
+  const compiler = new Compiler();
+  await compiler.compileImageTargets([image], progress => {
+    onProgress?.(progress);
+  });
+
+  const buffer = await compiler.exportData();
+  saveToCache(buffer);
+
+  return bufferToBlobUrl(buffer);
+}
+
+function loadFromCache() {
+  try {
+    const b64 = localStorage.getItem(CACHE_KEY);
+    if (!b64) return null;
+    const binary = atob(b64);
+    const bytes  = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bufferToBlobUrl(bytes.buffer);
+  } catch {
+    return null;
+  }
+}
+
+function saveToCache(buffer) {
+  try {
+    const bytes  = new Uint8Array(buffer);
+    let binary   = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    localStorage.setItem(CACHE_KEY, btoa(binary));
+  } catch {
+    // Storage quota exceeded — skip silently
+  }
+}
+
+function bufferToBlobUrl(buffer) {
+  return URL.createObjectURL(new Blob([buffer]));
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img    = new Image();
+    img.onload   = () => resolve(img);
+    img.onerror  = reject;
+    img.crossOrigin = 'anonymous';
+    img.src      = src;
   });
 }
 
-export function startAnimation() {
-  startTime = null;
-  animDone  = false;
-  if (rafId) cancelAnimationFrame(rafId);
-  rafId = requestAnimationFrame(tick);
-}
-
-// ── Animation loop ────────────────────────────────────────────────────────────
-function tick(ts) {
-  rafId = requestAnimationFrame(tick);
-
-  if (startTime === null) startTime = ts;
-  const elapsed = (ts - startTime) / 1000;   // seconds
-
-  if (!animDone) {
-    // ── Phase 1: Pop-up (back → front + spring scale) ──────────────────────
-    if (elapsed < POP_DURATION) {
-      const t     = elapsed / POP_DURATION;
-      const scale = easeOutElastic(t);        // springs past 1 then settles
-      mesh.scale.set(scale, scale, scale);
-      mesh.position.z = POP_START_Z + (POP_END_Z - POP_START_Z) * easeOutCubic(t);
-      // Slight spin during entrance for visual flair
-      mesh.rotation.y = (1 - easeOutCubic(t)) * Math.PI * 1.5;
-    } else {
-      // Snap to final values
-      mesh.scale.set(1, 1, 1);
-      mesh.position.z = POP_END_Z;
-      animDone = true;
-    }
-  } else {
-    // ── Phase 2: Idle — float + slow rotate (+ user drag override) ─────────
-    const idleT = elapsed - POP_DURATION;
-
-    // Gentle vertical float
-    mesh.position.y = Math.sin(idleT * 1.1) * 0.13;
-
-    if (!isDragging) {
-      // Apply drag momentum with damping
-      velY *= 0.92;
-      velX *= 0.92;
-      mesh.rotation.y += velY + 0.004;   // slow auto-rotate
-      mesh.rotation.x += velX;
-      // Clamp X tilt so heart doesn't flip fully
-      mesh.rotation.x = Math.max(-0.6, Math.min(0.6, mesh.rotation.x));
-    }
-  }
-
-  renderer.render(scene, camera);
-}
-
 // ── Easing functions ──────────────────────────────────────────────────────────
+
 function easeOutElastic(t) {
-  // Elastic spring — overshoots ~10% then settles
   const c4 = (2 * Math.PI) / 3;
   if (t <= 0) return 0;
   if (t >= 1) return 1;
@@ -137,34 +249,4 @@ function easeOutElastic(t) {
 
 function easeOutCubic(t) {
   return 1 - Math.pow(1 - t, 3);
-}
-
-// ── Pointer (mouse + touch) drag interaction ──────────────────────────────────
-function setupPointerInteraction(canvas) {
-  canvas.addEventListener('pointerdown', e => {
-    if (!animDone) return;
-    isDragging = true;
-    prevX = e.clientX;
-    prevY = e.clientY;
-    velX = velY = 0;
-    canvas.setPointerCapture(e.pointerId);
-  });
-
-  canvas.addEventListener('pointermove', e => {
-    if (!isDragging || !mesh) return;
-    const dx = e.clientX - prevX;
-    const dy = e.clientY - prevY;
-    const sensitivity = 0.012;
-    mesh.rotation.y += dx * sensitivity;
-    mesh.rotation.x += dy * sensitivity;
-    mesh.rotation.x = Math.max(-0.6, Math.min(0.6, mesh.rotation.x));
-    velY = dx * sensitivity;
-    velX = dy * sensitivity;
-    prevX = e.clientX;
-    prevY = e.clientY;
-  });
-
-  const endDrag = () => { isDragging = false; };
-  canvas.addEventListener('pointerup',    endDrag);
-  canvas.addEventListener('pointercancel', endDrag);
 }
