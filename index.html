@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>AR Experience</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- Live camera feed rendered behind the canvas -->
+  <video id="camera-feed" autoplay playsinline muted></video>
+
+  <!-- Three.js AR overlay -->
+  <canvas id="ar-canvas"></canvas>
+
+  <!-- ── Screens ── -->
+  <div id="permission-screen" class="overlay">
+    <div class="card">
+      <div class="card-icon">&#10084;</div>
+      <h1>AR Experience</h1>
+      <p>Point your camera anywhere and watch a 3D object appear in your world.</p>
+      <button id="start-btn" class="btn">Enable Camera</button>
+    </div>
+  </div>
+
+  <div id="loading-screen" class="overlay hidden">
+    <div class="card">
+      <div class="spinner"></div>
+      <p>Starting AR&hellip;</p>
+    </div>
+  </div>
+
+  <div id="error-screen" class="overlay hidden">
+    <div class="card">
+      <div class="card-icon" style="font-size:2.5rem">&#9888;</div>
+      <h2>Something went wrong</h2>
+      <p id="error-msg">Camera access is required.</p>
+      <button id="retry-btn" class="btn">Try Again</button>
+    </div>
+  </div>
+
+  <!-- Drag hint shown after object appears -->
+  <div id="ui-hint" class="hint hidden">Drag to rotate</div>
+
+  <script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+  </script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

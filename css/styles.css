@@ -1,0 +1,142 @@
+/* ═══════════════════════════════════════════════
+   AR Platform — Global Styles
+   ═══════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: #000;
+  color: #fff;
+}
+
+/* ── Camera feed ─────────────────────────────── */
+#camera-feed {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  z-index: 1;
+  /* Mirror for front camera feel (optional — remove if rear camera is preferred) */
+  /* transform: scaleX(-1); */
+}
+
+/* ── Three.js canvas ──────────────────────────── */
+#ar-canvas {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  z-index: 2;
+  pointer-events: auto;   /* enabled — scene.js handles drag */
+  touch-action: none;     /* prevent scroll/zoom interference */
+}
+
+/* ── Full-screen overlay screens ──────────────── */
+.overlay {
+  position: fixed; inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition: opacity 0.3s;
+}
+
+.overlay.hidden { display: none; }
+
+/* ── Card ─────────────────────────────────────── */
+.card {
+  text-align: center;
+  padding: 2.5rem 2rem;
+  max-width: 360px;
+  width: 90%;
+}
+
+.card-icon {
+  font-size: 3.5rem;
+  line-height: 1;
+  margin-bottom: 1.25rem;
+  display: block;
+}
+
+.card h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.02em;
+}
+
+.card h2 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.card p {
+  color: rgba(255, 255, 255, 0.6);
+  line-height: 1.6;
+  margin-bottom: 2rem;
+  font-size: 0.95rem;
+}
+
+/* ── Primary button ───────────────────────────── */
+.btn {
+  display: inline-block;
+  background: linear-gradient(135deg, #ff4d6d 0%, #ff0040 100%);
+  color: #fff;
+  border: none;
+  padding: 0.875rem 2.25rem;
+  border-radius: 50px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  box-shadow: 0 4px 24px rgba(255, 0, 64, 0.45);
+  transition: transform 0.18s, box-shadow 0.18s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn:hover  { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(255, 0, 64, 0.55); }
+.btn:active { transform: translateY(0);    box-shadow: 0 2px 12px rgba(255, 0, 64, 0.4);  }
+
+/* ── Spinner ──────────────────────────────────── */
+.spinner {
+  width: 44px; height: 44px;
+  border: 3px solid rgba(255, 255, 255, 0.18);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  margin: 0 auto 1.5rem;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Drag hint ────────────────────────────────── */
+.hint {
+  position: fixed;
+  bottom: 2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  background: rgba(0, 0, 0, 0.55);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.45rem 1.1rem;
+  border-radius: 50px;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: fadeInUp 0.5s ease forwards;
+}
+
+.hint.hidden { display: none; }
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}

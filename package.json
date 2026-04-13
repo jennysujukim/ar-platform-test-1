@@ -1,0 +1,11 @@
+{
+  "name": "ar-platform",
+  "version": "1.0.0",
+  "description": "Web AR platform — scan a QR code, watch a 3D object pop into your world",
+  "scripts": {
+    "dev":   "npx serve . --listen 3000 --cors",
+    "start": "npx serve . --listen 3000 --cors"
+  },
+  "keywords": ["ar", "three.js", "webxr"],
+  "license": "MIT"
+}

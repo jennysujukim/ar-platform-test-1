@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AR Platform &ndash; QR Codes</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    /* ── QR page overrides ── */
+    body { overflow: auto; background: #0d0d0f; min-height: 100vh; }
+
+    .page { max-width: 920px; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; }
+
+    .page-header { text-align: center; margin-bottom: 3rem; }
+    .page-header h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; }
+    .page-header p  { color: rgba(255,255,255,0.45); margin-top: 0.5rem; }
+
+    .url-box {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 1.5rem;
+      margin-bottom: 2.5rem;
+    }
+    .url-box label {
+      display: block;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.4);
+      margin-bottom: 0.6rem;
+    }
+    .url-row { display: flex; gap: 0.75rem; }
+    .url-input {
+      flex: 1;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      color: #fff;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .url-input:focus { border-color: rgba(255,255,255,0.38); }
+    .url-input::placeholder { color: rgba(255,255,255,0.25); }
+
+    /* Grid */
+    .qr-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .qr-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.09);
+      border-radius: 20px;
+      padding: 2rem 1.5rem;
+      text-align: center;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .qr-card:hover { transform: translateY(-4px); border-color: rgba(255,255,255,0.2); }
+
+    .obj-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      display: inline-block; margin-right: 0.45rem; vertical-align: middle;
+      position: relative; top: -1px;
+    }
+    .qr-card h3 { font-size: 1.15rem; color: #fff; margin-bottom: 0.3rem; }
+    .qr-desc    { font-size: 0.82rem; color: rgba(255,255,255,0.42); margin-bottom: 1.5rem; }
+
+    /* White background box around QR code */
+    .qr-wrap {
+      display: inline-block;
+      background: #fff;
+      border-radius: 12px;
+      padding: 10px;
+      margin-bottom: 1.25rem;
+      line-height: 0;   /* collapse whitespace */
+    }
+
+    .qr-url {
+      font-family: monospace;
+      font-size: 0.68rem;
+      color: rgba(255,255,255,0.3);
+      word-break: break-all;
+      margin-bottom: 1.25rem;
+      line-height: 1.4;
+    }
+
+    .open-btn {
+      display: inline-block;
+      background: rgba(255,255,255,0.09);
+      border: 1px solid rgba(255,255,255,0.16);
+      color: #fff;
+      border-radius: 8px;
+      padding: 0.5rem 1.1rem;
+      font-size: 0.82rem;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    .open-btn:hover { background: rgba(255,255,255,0.18); }
+
+    .footer-note {
+      margin-top: 2.5rem;
+      text-align: center;
+      color: rgba(255,255,255,0.28);
+      font-size: 0.83rem;
+      line-height: 1.7;
+      border: 1px dashed rgba(255,255,255,0.1);
+      border-radius: 14px;
+      padding: 1.5rem;
+    }
+    .footer-note code {
+      background: rgba(255,255,255,0.08);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="page-header">
+    <h1>AR Platform &mdash; QR Codes</h1>
+    <p>Set your deployed URL below, then share or print each QR code.</p>
+  </div>
+
+  <div class="url-box">
+    <label>Base URL of your AR platform</label>
+    <div class="url-row">
+      <input id="base-url" class="url-input" type="url"
+             placeholder="https://your-site.com/ar-platform/"
+             value="http://localhost:3000">
+      <button class="btn" id="gen-btn">Generate</button>
+    </div>
+  </div>
+
+  <div class="qr-grid" id="qr-grid"></div>
+
+  <div class="footer-note">
+    <strong style="color:rgba(255,255,255,0.55)">Adding a new AR object?</strong><br>
+    1&nbsp;&nbsp;Add an entry to <code>js/config.js</code> and update the <code>AR_OBJECTS</code> array in this file.<br>
+    2&nbsp;&nbsp;Create <code>js/objects/&lt;key&gt;.js</code> with an exported <code>create&lt;Name&gt;()</code> function.<br>
+    3&nbsp;&nbsp;Register it in <code>js/objects/registry.js</code>. A new QR card appears automatically here.
+  </div>
+
+</div>
+
+<!-- qrcodejs — renders into a div container -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+  /**
+   * AR_OBJECTS mirrors js/config.js.
+   * Keep both in sync when adding new objects.
+   */
+  const AR_OBJECTS = [
+    { key: 'heart', name: 'Heart', description: 'A red 3D heart that bursts into view', color: '#ff1744' },
+    // { key: 'star', name: 'Star', description: 'A golden 3D star', color: '#FFD700' },
+  ];
+
+  function renderGrid(rawBase) {
+    const base = rawBase.trim().replace(/\/+$/, '');
+    const grid = document.getElementById('qr-grid');
+    grid.innerHTML = '';
+
+    AR_OBJECTS.forEach(obj => {
+      const url = `${base}/index.html?object=${obj.key}`;
+
+      // ── Build card DOM manually to avoid innerHTML + child-node conflicts ──
+      const card = document.createElement('div');
+      card.className = 'qr-card';
+
+      // Title row
+      const h3 = document.createElement('h3');
+      const dot = document.createElement('span');
+      dot.className = 'obj-dot';
+      dot.style.background = obj.color;
+      h3.appendChild(dot);
+      h3.appendChild(document.createTextNode(obj.name));
+      card.appendChild(h3);
+
+      // Description
+      const desc = document.createElement('p');
+      desc.className = 'qr-desc';
+      desc.textContent = obj.description;
+      card.appendChild(desc);
+
+      // QR code wrapper (qrcodejs renders a canvas + img inside a div)
+      const wrap = document.createElement('div');
+      wrap.className = 'qr-wrap';
+      card.appendChild(wrap);
+
+      // URL label
+      const urlLabel = document.createElement('div');
+      urlLabel.className = 'qr-url';
+      urlLabel.textContent = url;
+      card.appendChild(urlLabel);
+
+      // "Open AR" link
+      const link = document.createElement('a');
+      link.className = 'open-btn';
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.textContent = 'Open AR →';
+      card.appendChild(link);
+
+      grid.appendChild(card);
+
+      // Generate QR code after the div is in the DOM
+      new QRCode(wrap, {
+        text: url,
+        width: 200,
+        height: 200,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('base-url');
+    renderGrid(input.value);
+
+    document.getElementById('gen-btn').addEventListener('click', () => renderGrid(input.value));
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') renderGrid(input.value); });
+  });
+</script>
+</body>
+</html>
