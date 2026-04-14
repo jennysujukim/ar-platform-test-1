@@ -16,7 +16,7 @@ import { Compiler } from 'mindar-image';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const TARGET_SRC  = 'assets/targets/heart-marker.png';
-const CACHE_KEY   = 'ar-heart-mind-v1';
+const CACHE_KEY   = 'ar-heart-mind-v2';  // bumped → forces recompile with enhanced marker
 const BASE_SCALE  = 0.12;   // heart size relative to the marker (≈ 2.2 * 0.12 = 0.26 units wide)
 const POP_DUR     = 1.4;    // seconds for the entrance pop animation
 
@@ -48,19 +48,29 @@ let velX  = 0, velY  = 0;
  *   .onTargetLost()          — called when the marker leaves the camera view
  */
 export async function initARScene(objectConfig, callbacks = {}) {
-  const { onCompileProgress, onReady, onTargetFound, onTargetLost } = callbacks;
+  const { onCompileProgress, onReady, onTargetFound, onTargetLost, onMarkerReady } = callbacks;
 
-  // 1. Compile heart-marker.png → blob URL pointing to a .mind file ───────────
-  const mindUrl = await compileTarget(TARGET_SRC, onCompileProgress);
+  // 1. Build feature-rich enhanced marker canvas, compile to .mind ─────────────
+  const { mindUrl, markerDataUrl } = await compileTarget(TARGET_SRC, onCompileProgress);
+
+  // Expose the printable marker to the UI before camera starts
+  onMarkerReady?.(markerDataUrl);
 
   // 2. Initialise MindARThree ──────────────────────────────────────────────────
   mindarThree = new MindARThree({
-    container:      document.getElementById('ar-container'),
-    imageTargetSrc: mindUrl,
-    maxTrack:       1,
-    uiLoading:      'no',
-    uiScanning:     'no',
-    uiError:        'no',
+    container:        document.getElementById('ar-container'),
+    imageTargetSrc:   mindUrl,
+    maxTrack:         1,
+    uiLoading:        'no',
+    uiScanning:       'no',
+    uiError:          'no',
+    // Tracking smoothness: lower filterMinCF = smoother but more lag;
+    // higher filterBeta = faster catch-up on fast movement.
+    filterMinCF:      0.001,
+    filterBeta:       0.01,
+    // Tolerance before confirming / dropping a tracked target (frames).
+    warmupTolerance:  3,
+    missTolerance:    10,
   });
 
   const { renderer, scene, camera } = mindarThree;
@@ -181,23 +191,109 @@ export async function initARScene(objectConfig, callbacks = {}) {
 // ── In-browser .mind compilation ──────────────────────────────────────────────
 
 async function compileTarget(imagePath, onProgress) {
+  // Always build the enhanced canvas so we can show users exactly what to scan.
+  const canvas = await buildEnhancedMarkerCanvas(imagePath);
+  const markerDataUrl = canvas.toDataURL('image/png');
+
   // Return cached compiled data from localStorage (skip slow recompilation)
   const cached = loadFromCache();
-  if (cached) return cached;
+  if (cached) return { mindUrl: cached, markerDataUrl };
 
-  // Load the target image
-  const image = await loadImage(imagePath);
-
-  // Compile via MindAR's built-in Compiler
+  // Compile the enhanced canvas via MindAR's built-in Compiler
   const compiler = new Compiler();
-  await compiler.compileImageTargets([image], progress => {
+  await compiler.compileImageTargets([canvas], progress => {
     onProgress?.(progress);
   });
 
   const buffer = await compiler.exportData();
   saveToCache(buffer);
 
-  return bufferToBlobUrl(buffer);
+  return { mindUrl: bufferToBlobUrl(buffer), markerDataUrl };
+}
+
+/**
+ * buildEnhancedMarkerCanvas
+ *
+ * Draws a feature-rich 512×512 marker that MindAR can reliably detect.
+ * A plain heart silhouette has too few keypoints; this version adds:
+ *   • QR-code-style finder squares in three corners  (high-contrast edges)
+ *   • A dense dot grid across the background         (distributed keypoints)
+ *   • A bold decorative border with tick marks       (structured edges)
+ *   • The original heart centred at full size        (the recognisable symbol)
+ *   • "AR HEART" / "SCAN ME" text labels             (additional features)
+ *
+ * The SAME image is both compiled for tracking and shown to the user to scan,
+ * so there is no mismatch between the target and the physical marker.
+ */
+async function buildEnhancedMarkerCanvas(imagePath) {
+  const S   = 512;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = S;
+  const ctx = canvas.getContext('2d');
+
+  // ── Background ──────────────────────────────────────────────────────────────
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, S, S);
+
+  // ── Dot grid — spreads keypoints uniformly across the surface ───────────────
+  ctx.fillStyle = '#cccccc';
+  const STEP = 20;
+  for (let gx = STEP; gx < S; gx += STEP) {
+    for (let gy = STEP; gy < S; gy += STEP) {
+      ctx.beginPath();
+      ctx.arc(gx, gy, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // ── Helper: QR-code-style finder square ─────────────────────────────────────
+  const drawFinder = (cx, cy, sz = 64) => {
+    // Three nested squares: filled-black / filled-white / filled-black
+    [sz, sz * 0.75, sz * 0.5].forEach((s, i) => {
+      ctx.fillStyle = i % 2 === 0 ? '#000000' : '#ffffff';
+      ctx.fillRect(cx - s / 2, cy - s / 2, s, s);
+    });
+  };
+
+  drawFinder(52, 52);         // top-left
+  drawFinder(S - 52, 52);    // top-right
+  drawFinder(52, S - 52);    // bottom-left
+
+  // ── Decorative red border frame ─────────────────────────────────────────────
+  const INSET = 90;
+  ctx.strokeStyle = '#cc0022';
+  ctx.lineWidth   = 5;
+  ctx.strokeRect(INSET, INSET, S - INSET * 2, S - INSET * 2);
+
+  // Tick marks along the border edges (add structured high-contrast features)
+  ctx.fillStyle = '#cc0022';
+  for (let p = INSET + 15; p < S - INSET; p += 25) {
+    ctx.fillRect(p,         INSET - 6,   4, 10);   // top
+    ctx.fillRect(p,         S - INSET - 4, 4, 10); // bottom
+    ctx.fillRect(INSET - 6, p,           10,  4);  // left
+    ctx.fillRect(S - INSET - 4, p,       10,  4);  // right
+  }
+
+  // ── "AR HEART" label at top ─────────────────────────────────────────────────
+  ctx.fillStyle  = '#000000';
+  ctx.font       = 'bold 26px Arial, Helvetica, sans-serif';
+  ctx.textAlign  = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('AR HEART', S / 2, 52);
+
+  // ── Original heart image centred ────────────────────────────────────────────
+  const img      = await loadImage(imagePath);
+  const heartSz  = 280;
+  const hx = (S - heartSz) / 2;
+  const hy = (S - heartSz) / 2 + 10;
+  ctx.drawImage(img, hx, hy, heartSz, heartSz);
+
+  // ── "SCAN ME" label at bottom ───────────────────────────────────────────────
+  ctx.fillStyle  = '#333333';
+  ctx.font       = '20px Arial, Helvetica, sans-serif';
+  ctx.fillText('SCAN ME', S / 2, S - 30);
+
+  return canvas;
 }
 
 function loadFromCache() {

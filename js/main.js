@@ -8,15 +8,17 @@ import { initARScene }    from './scene.js';
 import { getObjectConfig } from './objects/registry.js';
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
-const $permission  = document.getElementById('permission-screen');
-const $loading     = document.getElementById('loading-screen');
-const $loadingMsg  = document.getElementById('loading-msg');
-const $compileWrap = document.getElementById('compile-progress');
-const $compileBar  = document.getElementById('compile-bar');
-const $error       = document.getElementById('error-screen');
-const $errorMsg    = document.getElementById('error-msg');
-const $scanOverlay = document.getElementById('scan-overlay');
-const $hint        = document.getElementById('ui-hint');
+const $permission      = document.getElementById('permission-screen');
+const $loading         = document.getElementById('loading-screen');
+const $loadingMsg      = document.getElementById('loading-msg');
+const $compileWrap     = document.getElementById('compile-progress');
+const $compileBar      = document.getElementById('compile-bar');
+const $error           = document.getElementById('error-screen');
+const $errorMsg        = document.getElementById('error-msg');
+const $scanOverlay     = document.getElementById('scan-overlay');
+const $hint            = document.getElementById('ui-hint');
+const $markerPreview   = document.getElementById('marker-preview');
+const $markerDownload  = document.getElementById('marker-download');
 
 // ── Which AR object to show (from QR code URL param) ─────────────────────────
 const params    = new URLSearchParams(window.location.search);
@@ -42,6 +44,15 @@ async function startAR() {
           hide($compileWrap);
           $loadingMsg.textContent = 'Starting camera\u2026';
         }
+      },
+
+      // Called once the enhanced marker canvas is ready — show it so the user
+      // knows exactly what to hold in front of the camera.
+      onMarkerReady(dataUrl) {
+        $markerPreview.src = dataUrl;
+        $markerDownload.href = dataUrl;
+        show($markerPreview);
+        show($markerDownload);
       },
 
       // Called once the MindAR camera is live and tracking has started
